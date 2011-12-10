@@ -1,0 +1,6 @@
+#yubikey__otp,
+form#dw__login a.yubikey {
+    background: url(login-bg.gif) left center no-repeat;
+    padding-left: 18px;
+}
+

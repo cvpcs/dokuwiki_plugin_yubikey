@@ -1,0 +1,4 @@
+====== YubiKey Login ======
+
+You can log into this Wiki using the [[http://yubico.com|YubiKey]] OTP system.
+Just enter your YubiKey OTP into the login field.
