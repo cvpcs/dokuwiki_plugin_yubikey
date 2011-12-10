@@ -15,6 +15,7 @@ $lang['manage_link']  = 'You can also <a href="%s">manage your YubiKey identitie
 $lang['add_yubikey_title']         = 'Add a YubiKey';
 $lang['yubikeys_title']  = 'Your YubiKeys';
 
+$lang['complete_setup_notice'] = 'YubiKey is installed but not setup.  Please add the API information to the configuration.';
 $lang['complete_registration_notice']  = 'You are currently connected with a temporary YubiKey session. <a href="%s">Finish your registration</a> to make it permanent.';
 
 $lang['yubikey_already_user_error']  = 'YubiKey identity already used';

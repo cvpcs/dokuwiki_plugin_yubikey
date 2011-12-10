@@ -33,21 +33,22 @@
 // must be run within Dokuwiki
 if(!defined('DOKU_INC')) die();
 
-if(!defined('DOKU_PLUGIN')) define('DOKU_PLUGIN',DOKU_INC.'lib/plugins/');
+if(!defined('DOKU_PLUGIN')) define('DOKU_PLUGIN', DOKU_INC . 'lib/plugins/');
+if(!defined('DOKU_PLUGIN_YUBIKEY')) define('DOKU_PLUGIN_YUBIKEY', dirname(__FILE__) . '/');
 
-require_once(DOKU_PLUGIN.'action.php');
+require_once(DOKU_PLUGIN . 'action.php');
+require_once(DOKU_PLUGIN_YUBIKEY . 'lib/Yubikey.php');
 
 class action_plugin_yubikey extends DokuWiki_Action_Plugin {
 
 	/**
 	 * Return some info
 	 */
-	function getInfo()
-	{
+	function getInfo() {
 		return array(
 			'author' => 'Austen Dicken',
 			'email'  => 'cvpcsm@gmail.com',
-			'date'   => '2011-12-09',
+			'date'   => '2011-12-10',
 			'name'   => 'YubiKey plugin',
 			'desc'   => 'Authenticate on a DokuWiki with YubiKey',
 			'url'    => 'http://cvpcs.org/projects/web/dokuwiki-plugin-yubikey',
@@ -57,8 +58,7 @@ class action_plugin_yubikey extends DokuWiki_Action_Plugin {
 	/**
 	 * Register the eventhandlers
 	 */
-	function register(&$controller)
-	{
+	function register(&$controller) {
 		$controller->register_hook('HTML_LOGINFORM_OUTPUT',
 			'BEFORE',
 			$this,
@@ -84,8 +84,7 @@ class action_plugin_yubikey extends DokuWiki_Action_Plugin {
 	/**
 	 * Returns the requested URL
 	 */
-	function _self($do)
-	{
+	function _self($do) {
 		global $ID;
 		return wl($ID, 'do=' . $do, true, '&');
 	}
@@ -93,8 +92,7 @@ class action_plugin_yubikey extends DokuWiki_Action_Plugin {
 	/**
 	 * Redirect the user
 	 */
-	function _redirect($url)
-	{
+	function _redirect($url) {
 		header('Location: ' . $url);
 		exit; 
 	}
@@ -102,9 +100,16 @@ class action_plugin_yubikey extends DokuWiki_Action_Plugin {
 	/**
 	 * Handles the yubikey action
 	 */
-	function handle_act_preprocess(&$event, $param)
-	{
-		global $ID, $conf, $auth;
+	function handle_act_preprocess(&$event, $param) {
+		global $auth, $conf, $ID, $INFO;
+
+		if (!$this->is_setup()) {
+			if($conf['useacl'] && $INFO['ismanager']) {
+				msg($this->getLang('complete_setup_notice'), 2);
+			}
+
+			return;
+		}
 
 		$user = $_SERVER['REMOTE_USER'];
         
@@ -128,7 +133,6 @@ class action_plugin_yubikey extends DokuWiki_Action_Plugin {
 		}
 
 		if ($event->data == 'yubikey') {
-
 			// not sure this if it's useful there
 			$event->stopPropagation();
 			$event->preventDefault();
@@ -142,7 +146,7 @@ class action_plugin_yubikey extends DokuWiki_Action_Plugin {
 				$valid = $yubikey_api->verify($yubikey_otp);
 
 				if ($valid) {
-					$yubikey = get_yubikey_id($yubikey_otp);
+					$yubikey = $this->get_yubikey_id($yubikey_otp);
 
 					if (isset($user) && !preg_match('!^yubikey:!', $user)) {
 						$result = $this->register_yubikey_association($user,$yubikey);
@@ -180,9 +184,16 @@ class action_plugin_yubikey extends DokuWiki_Action_Plugin {
 	/**
 	 * Create the YubiKey login/complete forms
 	 */
-	function handle_act_unknown(&$event, $param)
-	{
-		global $auth, $ID;
+	function handle_act_unknown(&$event, $param) {
+		global $auth, $conf, $ID, $INFO;
+
+		if (!$this->is_setup()) {
+			if($conf['useacl'] && $INFO['ismanager']) {
+				msg($this->getLang('complete_setup_notice'), 2);
+			}
+
+			return;
+		}
 
 		if ($event->data != 'yubikey') {
 			return;
@@ -237,7 +248,7 @@ class action_plugin_yubikey extends DokuWiki_Action_Plugin {
 			$form->addElement(
 				form_makeTextField(
 					'yubikey_otp', isset($_POST['yubikey_otp']) ? $_POST['yubikey_otp'] : '',
-					$this->getLang('yubikey_otp_label'), 'yubikey_otp', 'block', array('size'=>'50')
+					$this->getLang('yubikey_otp_label'), 'yubikey__otp', 'block', array('size'=>'50')
 				)
 			);
 			$form->addElement(form_makeButton('submit', '', $this->getLang('add_button')));
@@ -249,8 +260,7 @@ class action_plugin_yubikey extends DokuWiki_Action_Plugin {
 	/**
 	 * Generate the YubiKey login/complete forms
 	 */    
-	function get_yubikey_form($mode)
-	{
+	function get_yubikey_form($mode) {
 		global $USERINFO, $lang;
 
 		$c = 'block';
@@ -269,7 +279,7 @@ class action_plugin_yubikey extends DokuWiki_Action_Plugin {
 		} else {
 			$form->startFieldset($this->getLang('yubikey_login_fieldset'));
 			$form->addHidden('mode', 'login');
-			$form->addElement(form_makeTextField('yubikey_otp', $_REQUEST['yubikey_otp'], $this->getLang('yubikey_otp_label'), 'yubikey_otp', $c, $p));
+			$form->addElement(form_makeTextField('yubikey_otp', $_REQUEST['yubikey_otp'], $this->getLang('yubikey_otp_label'), 'yubikey__otp', $c, $p));
 			$form->addElement(form_makeButton('submit', '', $lang['btn_login']));
 		}
 		$form->endFieldset();
@@ -283,16 +293,34 @@ class action_plugin_yubikey extends DokuWiki_Action_Plugin {
 	/**
 	 * Insert link to YubiKey into usual login form
 	 */
-	function handle_login_form(&$event, $param)
-	{
+	function handle_login_form(&$event, $param) {
+		global $conf, $INFO;
+
+		if (!$this->is_setup()) {
+			if($conf['useacl'] && $INFO['ismanager']) {
+				msg($this->getLang('complete_setup_notice'), 2);
+			}
+
+			return;
+		}
+
 		$msg = $this->getLang('login_link');
 		$msg = sprintf("<p>$msg</p>", $this->_self('yubikey'));
 		$pos = $event->data->findElementByAttribute('type', 'submit');
 		$event->data->insertElement($pos+2, $msg);
 	}
 
-	function handle_profile_form(&$event, $param)
-	{
+	function handle_profile_form(&$event, $param) {
+		global $conf, $INFO;
+
+		if (!$this->is_setup()) {
+			if($conf['useacl'] && $INFO['ismanager']) {
+				msg($this->getLang('complete_setup_notice'), 2);
+			}
+
+			return;
+		}
+
 		echo '<p>', sprintf($this->getLang('manage_link'), $this->_self('yubikey')), '</p>';
 	}
 	
@@ -301,8 +329,7 @@ class action_plugin_yubikey extends DokuWiki_Action_Plugin {
 	*
 	* We store available userinfo in Session and Cookie
 	*/
-	function login_user($yubikey)
-	{
+	function login_user($yubikey) {
 		global $USERINFO, $auth, $conf;
 
 		// look for associations passed from an auth backend in user infos
@@ -348,8 +375,7 @@ class action_plugin_yubikey extends DokuWiki_Action_Plugin {
 	 * Register the user in DokuWiki user conf,
 	 * write the YubiKey association in the YubiKey conf
 	 */
-	function register_user()
-	{
+	function register_user() {
 		global $ID, $lang, $conf, $auth, $yubikey_associations;
 
 		if(!$auth->canDo('addUser')) return false;
@@ -380,6 +406,12 @@ class action_plugin_yubikey extends DokuWiki_Action_Plugin {
 		$user = $_POST['login'];
 		$yubikey = $_SERVER['REMOTE_USER'];
 
+		// if our yubikey id is based on a non-registered user, we need to chunk off the "yubikey:"
+		// part of it
+		if (preg_match('!^yubikey:!', $yubikey)) {
+			$yubikey = substr($yubikey, 8);
+		}
+
 		// we update the YubiKey associations array
 		$this->register_yubikey_association($user, $yubikey);
 
@@ -397,8 +429,7 @@ class action_plugin_yubikey extends DokuWiki_Action_Plugin {
 	 * So, you better set it to an high value, like '60*60*24', the user being disconnected
 	 * in that case one day after authentication
 	 */
-	function update_session($user)
-	{
+	function update_session($user) {
 		session_start();
 
 		global $USERINFO, $INFO, $conf, $auth;
@@ -421,8 +452,7 @@ class action_plugin_yubikey extends DokuWiki_Action_Plugin {
 		return true;
 	}
 
-	function register_yubikey_association($user, $yubikey)
-	{
+	function register_yubikey_association($user, $yubikey) {
 		$associations = $this->get_associations();
 		if (isset($associations[$yubikey])) {
 			msg($this->getLang('yubikey_already_user_error'), -1);
@@ -433,8 +463,7 @@ class action_plugin_yubikey extends DokuWiki_Action_Plugin {
 		return true;
 	}
 
-	function remove_yubikey_association($user, $yubikey)
-	{
+	function remove_yubikey_association($user, $yubikey) {
 		$associations = $this->get_associations();
 		if (isset($associations[$yubikey]) && $associations[$yubikey] == $user) {
 			unset($associations[$yubikey]);
@@ -444,8 +473,7 @@ class action_plugin_yubikey extends DokuWiki_Action_Plugin {
 		return false;
 	}
 
-	function write_yubikey_associations($associations)
-	{
+	function write_yubikey_associations($associations) {
 		$cfg = '<?php' . "\n";
 		foreach ($associations as $id => $login) {
 			$cfg .= '$yubikey_associations["' . addslashes($id) . '"] = "' . addslashes($login) . '"' . ";\n";
@@ -454,8 +482,7 @@ class action_plugin_yubikey extends DokuWiki_Action_Plugin {
 		$this->yubikey_associations = $associations;
 	}
 
-	function get_associations($username = null)
-	{
+	function get_associations($username = null) {
 		if (isset($this->yubikey_associations)) {
 			$yubikey_associations = $this->yubikey_associations;
 		} else if (file_exists(DOKU_CONF.'yubikey.php')) {
@@ -481,6 +508,10 @@ class action_plugin_yubikey extends DokuWiki_Action_Plugin {
 
 	function get_yubikey_id($otp) {
 		return substr($otp, 0, 12);
+	}
+
+	function is_setup() {
+		return $this->getConf('api_client_id') > 0;
 	}
 
 }
