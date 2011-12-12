@@ -138,11 +138,13 @@ class action_plugin_yubikey extends DokuWiki_Action_Plugin {
 			$event->preventDefault();
 
 			if (isset($_POST['mode']) && ($_POST['mode'] == 'login' || $_POST['mode'] == 'add')) {
-				// retreive our otp
+				// retreive our information
 				$yubikey_otp = $_POST['yubikey_otp'];
+				$yubikey_cid = $this->getConf('api_client_id');
+				$yubikey_sec = $this->getConf('api_secret_key');
 
 				// attempt a login with it
-				$yubikey_api = new Yubikey($this->getConf('api_client_id'));
+				$yubikey_api = new Yubikey($yubikey_cid, empty($yubikey_sec) ? null : $yubikey_sec);
 				$valid = $yubikey_api->verify($yubikey_otp);
 
 				if ($valid) {
@@ -162,7 +164,7 @@ class action_plugin_yubikey extends DokuWiki_Action_Plugin {
 					}
 
 				} else {
-					msg($this->getLang('yubikey_authentication_failed') . ': ' . $response->message, -1);
+					msg($this->getLang('yubikey_authentication_failed') . ': ' . $yubikey_api->getLastResponse(), -1);
 					return;
 				}
 
