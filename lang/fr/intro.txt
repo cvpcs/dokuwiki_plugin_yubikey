@@ -1,4 +1,4 @@
 ====== Connexion YubiKey ======
 
 Vous pouvez vous connecter à ce wiki grâce au système de mot de passe à usage unique (OTP) [[http://yubico.com|YubiKey]].
-Saisissez votre OTP Yubikey dans le champs de connexion.
+Saisissez votre OTP YubiKey dans le champ de connexion.
